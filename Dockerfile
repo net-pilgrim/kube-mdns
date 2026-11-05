@@ -1,40 +1,21 @@
-FROM python:3.13-alpine AS base
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+WORKDIR /build
 
-RUN adduser -u 1000 -D app
+COPY go.mod go.sum ./
+RUN go mod download
 
-FROM base AS build
+COPY . .
 
-ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
-ENV UV_NO_DEV=1
-ENV UV_PYTHON_DOWNLOADS=0
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-s -w" -o kube-mdns ./cmd/kube-mdns
 
-WORKDIR /usr/src/app
-
-RUN chown -R app:app /usr/src/app
-
-USER app
-
-RUN --mount=type=cache,target=/home/app/.cache/uv,uid=1000,gid=1000 \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --locked --no-install-project
-
-COPY --chown=app:app . .
-
-RUN uv sync --locked
-
-FROM python:3.13-alpine AS deploy
+FROM alpine:3.20 AS deploy
 
 RUN adduser -u 1000 -D app
 
-WORKDIR /usr/src/app
-
-COPY --from=build --chown=app:app /usr/src/app /usr/src/app
+COPY --from=builder /build/kube-mdns /usr/local/bin/kube-mdns
 
 USER app
 
-ENV PATH="/usr/src/app/.venv/bin:$PATH"
-
-CMD ["python", "-m", "src.main"]
+ENTRYPOINT ["/usr/local/bin/kube-mdns"]

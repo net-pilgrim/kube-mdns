@@ -32,6 +32,19 @@ MANIFEST
 *.manifest
 *.spec
 
+# Helm
+.cr-release-packages/
+*.tgz
+
+# Go
+/bin/
+/kube-mdns
+
+# Zig
+.zig-cache/
+zig-out/
+
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
