@@ -139,3 +139,31 @@ Since `hostNetwork: true` is enabled, you might want to pin the pod to a node co
 nodeSelector:
   kubernetes.io/hostname: "k8s-worker-lan-1"
 ```
+
+### 4. Enabling Operator Mode & CRDs
+
+To enable the controller to watch `MdnsRecord` Custom Resource Definitions in addition to Ingresses:
+
+```bash
+# 1. Install the CRD
+kubectl apply -f https://raw.githubusercontent.com/net-pilgrim/kube-mdns/master/manifests/crds/mdnsrecords.yaml
+
+# 2. Enable CRD RBAC in Helm
+helm upgrade --install kube-mdns oci://ghcr.io/net-pilgrim/charts/kube-mdns \
+  --namespace kube-mdns-system \
+  --set kubeMdns.enableCrd=true
+```
+
+You can then create standalone `MdnsRecord` resources:
+
+```yaml
+apiVersion: mdns.net-pilgrim.dev/v1alpha1
+kind: MdnsRecord
+metadata:
+  name: homeassistant
+  namespace: default
+spec:
+  host: homeassistant.local
+  ip: 192.168.1.100
+  port: 8123
+```

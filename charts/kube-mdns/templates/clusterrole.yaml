@@ -20,7 +20,7 @@ rules:
       - watch
   {{- if .Values.kubeMdns.enableCrd }}
   - apiGroups:
-      - mdns.k8s.io
+      - mdns.net-pilgrim.dev
     resources:
       - mdnsrecords
       - mdnsrecords/status

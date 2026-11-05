@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -86,9 +87,23 @@ func main() {
 
 	// Start Ingress Controller
 	ingressCtrl := controller.NewIngressController(clientset, mdnsMgr, cfg.Port, 10*time.Minute)
-	if err := ingressCtrl.Run(ctx); err != nil {
-		log.Fatalf("Ingress controller error: %v", err)
+	go func() {
+		if err := ingressCtrl.Run(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("Ingress controller error: %v", err)
+		}
+	}()
+
+	// Start CRD Controller (Operator mode)
+	if dynClient, err := dynamic.NewForConfig(k8sConfig); err == nil {
+		crdCtrl := controller.NewCRDController(dynClient, mdnsMgr, cfg.Port, 10*time.Minute)
+		go func() {
+			if err := crdCtrl.Run(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("Note: MdnsRecord CRD controller stopped or CRD not installed: %v", err)
+			}
+		}()
 	}
+
+	<-ctx.Done()
 
 	log.Printf("kube-mdns shutdown complete. Goodbye!")
 }
