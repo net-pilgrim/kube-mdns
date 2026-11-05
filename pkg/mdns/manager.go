@@ -251,6 +251,7 @@ func (m *Manager) Unpublish(key string) {
 	m.removeEntriesLocked(key, entries)
 	m.mu.Unlock()
 
+	log.Printf("[%s] Unregistering mDNS records (sending goodbye)", key)
 	go m.sendGoodbye(entries)
 }
 
