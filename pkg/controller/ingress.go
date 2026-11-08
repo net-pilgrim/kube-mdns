@@ -23,30 +23,39 @@ const (
 	AnnIP          = "mdns.net-pilgrim.dev/ip"
 	AnnPort        = "mdns.net-pilgrim.dev/port"
 	AnnServiceType = "mdns.net-pilgrim.dev/service-type"
+	AnnIcon        = "mdns.net-pilgrim.dev/icon"
+	AnnModel       = "mdns.net-pilgrim.dev/model"
+	AnnTXT         = "mdns.net-pilgrim.dev/txt"
 	LblPublish     = "mdns.net-pilgrim.dev/publish"
 )
 
 type IngressController struct {
-	client      kubernetes.Interface
-	mdnsManager *mdns.Manager
-	defaultPort int
-	informer    cache.SharedIndexInformer
+	client       kubernetes.Interface
+	mdnsManager  *mdns.Manager
+	defaultPort  int
+	defaultIcon  string
+	defaultModel string
+	informer     cache.SharedIndexInformer
 }
 
 func NewIngressController(
 	client kubernetes.Interface,
 	mdnsManager *mdns.Manager,
 	defaultPort int,
+	defaultIcon string,
+	defaultModel string,
 	resyncPeriod time.Duration,
 ) *IngressController {
 	factory := informers.NewSharedInformerFactory(client, resyncPeriod)
 	ingressInformer := factory.Networking().V1().Ingresses().Informer()
 
 	c := &IngressController{
-		client:      client,
-		mdnsManager: mdnsManager,
-		defaultPort: defaultPort,
-		informer:    ingressInformer,
+		client:       client,
+		mdnsManager:  mdnsManager,
+		defaultPort:  defaultPort,
+		defaultIcon:  defaultIcon,
+		defaultModel: defaultModel,
+		informer:     ingressInformer,
 	}
 
 	ingressInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -141,6 +150,19 @@ func (c *IngressController) reconcile(ing *networkingv1.Ingress) {
 	// Resolve Service Type
 	serviceType := annotations[AnnServiceType]
 
+	// Resolve Icon & Model
+	icon := annotations[AnnIcon]
+	if icon == "" {
+		icon = c.defaultIcon
+	}
+	model := annotations[AnnModel]
+	if model == "" {
+		model = c.defaultModel
+	}
+
+	// Resolve TXT records
+	txt := resolveTXTRecords(annotations)
+
 	// Resolve Hostnames
 	var hostnames []string
 	if annHost, ok := annotations[AnnHostname]; ok && annHost != "" {
@@ -180,10 +202,52 @@ func (c *IngressController) reconcile(ing *networkingv1.Ingress) {
 			IPs:         ips,
 			Port:        port,
 			ServiceType: serviceType,
+			Icon:        icon,
+			Model:       model,
+			TXT:         txt,
 		})
 	}
 
 	c.mdnsManager.Publish(key, records)
+}
+
+func resolveTXTRecords(annotations map[string]string) map[string]string {
+	var txt map[string]string
+	if raw, ok := annotations[AnnTXT]; ok && strings.TrimSpace(raw) != "" {
+		txt = make(map[string]string)
+		for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+			return r == ',' || r == '\n' || r == ';'
+		}) {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if idx := strings.Index(part, "="); idx >= 0 {
+				k := strings.TrimSpace(part[:idx])
+				v := strings.TrimSpace(part[idx+1:])
+				if k != "" {
+					txt[k] = v
+				}
+			} else {
+				txt[part] = ""
+			}
+		}
+	}
+
+	txtPrefix := AnnPrefix + "/txt-"
+	for k, v := range annotations {
+		if strings.HasPrefix(k, txtPrefix) {
+			subKey := strings.TrimPrefix(k, txtPrefix)
+			if subKey != "" {
+				if txt == nil {
+					txt = make(map[string]string)
+				}
+				txt[subKey] = v
+			}
+		}
+	}
+
+	return txt
 }
 
 func (c *IngressController) resolvePort(ing *networkingv1.Ingress, annotations map[string]string) int {

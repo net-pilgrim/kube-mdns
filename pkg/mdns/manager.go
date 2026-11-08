@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,6 +29,9 @@ type Record struct {
 	IPs         []string
 	Port        int
 	ServiceType string
+	Icon        string            // e.g. "RackMac", "Macmini", "https://...", "mdi:server"
+	Model       string            // e.g. "RackMac", "Xserve"
+	TXT         map[string]string // Custom TXT record key-values
 }
 
 type serviceEntry struct {
@@ -37,6 +41,7 @@ type serviceEntry struct {
 	instanceFull string   // e.g. "immich._http._tcp.local."
 	port         int      // e.g. 80
 	ips          []net.IP // parsed IPs
+	txt          []string // DNS-SD TXT record strings (e.g. ["model=RackMac", "icon=..."])
 }
 
 // Manager manages mDNS records and responds to queries over multicast.
@@ -218,6 +223,8 @@ func (m *Manager) Publish(key string, records []Record) error {
 			}
 		}
 
+		txtStrings := buildTXTStrings(rec)
+
 		entry := &serviceEntry{
 			instanceName: instance,
 			hostName:     host,
@@ -225,10 +232,33 @@ func (m *Manager) Publish(key string, records []Record) error {
 			instanceFull: instanceFull,
 			port:         rec.Port,
 			ips:          ips,
+			txt:          txtStrings,
 		}
 		newEntries = append(newEntries, entry)
-		log.Printf("[%s] Registering mDNS record: instance=%q host=%q port=%d ips=%v service=%q",
-			key, instance, host, rec.Port, rec.IPs, st)
+		log.Printf("[%s] Registering mDNS record: instance=%q host=%q port=%d ips=%v service=%q txt=%v",
+			key, instance, host, rec.Port, rec.IPs, st, txtStrings)
+
+		// If an icon or model is configured, register a companion _device-info._tcp.local. service
+		effectiveModel := rec.Model
+		if effectiveModel == "" && rec.Icon != "" && !isURL(rec.Icon) {
+			effectiveModel = rec.Icon
+		}
+		if effectiveModel != "" && st != "_device-info._tcp.local." {
+			diService := "_device-info._tcp.local."
+			diFull := fmt.Sprintf("%s.%s", instance, diService)
+			diEntry := &serviceEntry{
+				instanceName: instance,
+				hostName:     host,
+				serviceType:  diService,
+				instanceFull: diFull,
+				port:         0,
+				ips:          ips,
+				txt:          []string{fmt.Sprintf("model=%s", effectiveModel)},
+			}
+			newEntries = append(newEntries, diEntry)
+			log.Printf("[%s] Registering companion device-info mDNS record: instance=%q host=%q model=%q",
+				key, instance, host, effectiveModel)
+		}
 	}
 
 	m.addEntriesLocked(key, newEntries)
@@ -253,6 +283,13 @@ func (m *Manager) Unpublish(key string) {
 
 	log.Printf("[%s] Unregistering mDNS records (sending goodbye)", key)
 	go m.sendGoodbye(entries)
+}
+
+// GetEntriesForHost returns the registered service entries for a hostname (useful for tests and inspection).
+func (m *Manager) GetEntriesForHost(host string) []*serviceEntry {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.byHost[canonicalHostName(host)]
 }
 
 // Close gracefully stops listeners and announces goodbye for all records.
@@ -494,7 +531,7 @@ func (m *Manager) handleQuery(query *dns.Msg, from net.Addr, ifIndex int, isIPv6
 						},
 						Ptr: e.instanceFull,
 					})
-					// Add SRV and A records to Extras
+					// Add SRV, TXT, and A records to Extras
 					extras = append(extras, &dns.SRV{
 						Hdr: dns.RR_Header{
 							Name:   e.instanceFull,
@@ -504,6 +541,19 @@ func (m *Manager) handleQuery(query *dns.Msg, from net.Addr, ifIndex int, isIPv6
 						},
 						Target: e.hostName,
 						Port:   uint16(e.port),
+					})
+					txtData := e.txt
+					if len(txtData) == 0 {
+						txtData = []string{""}
+					}
+					extras = append(extras, &dns.TXT{
+						Hdr: dns.RR_Header{
+							Name:   e.instanceFull,
+							Rrtype: dns.TypeTXT,
+							Class:  dns.ClassINET | 0x8000,
+							Ttl:    defaultTTL,
+						},
+						Txt: txtData,
 					})
 					for _, ip := range e.ips {
 						if ip4 := ip.To4(); ip4 != nil {
@@ -536,6 +586,19 @@ func (m *Manager) handleQuery(query *dns.Msg, from net.Addr, ifIndex int, isIPv6
 						Target: e.hostName,
 						Port:   uint16(e.port),
 					})
+					txtData := e.txt
+					if len(txtData) == 0 {
+						txtData = []string{""}
+					}
+					extras = append(extras, &dns.TXT{
+						Hdr: dns.RR_Header{
+							Name:   e.instanceFull,
+							Rrtype: dns.TypeTXT,
+							Class:  dns.ClassINET | 0x8000,
+							Ttl:    defaultTTL,
+						},
+						Txt: txtData,
+					})
 					for _, ip := range e.ips {
 						if ip4 := ip.To4(); ip4 != nil {
 							extras = append(extras, &dns.A{
@@ -551,6 +614,10 @@ func (m *Manager) handleQuery(query *dns.Msg, from net.Addr, ifIndex int, isIPv6
 					}
 				}
 				if q.Qtype == dns.TypeTXT || q.Qtype == dns.TypeANY {
+					txtData := e.txt
+					if len(txtData) == 0 {
+						txtData = []string{""}
+					}
 					answers = append(answers, &dns.TXT{
 						Hdr: dns.RR_Header{
 							Name:   e.instanceFull,
@@ -558,7 +625,7 @@ func (m *Manager) handleQuery(query *dns.Msg, from net.Addr, ifIndex int, isIPv6
 							Class:  dns.ClassINET | 0x8000,
 							Ttl:    defaultTTL,
 						},
-						Txt: []string{""},
+						Txt: txtData,
 					})
 				}
 			}
@@ -776,6 +843,20 @@ func buildAnnouncementMessage(entries []*serviceEntry, ttl uint32) *dns.Msg {
 			},
 			Ptr: e.instanceFull,
 		})
+		// TXT
+		txtData := e.txt
+		if len(txtData) == 0 {
+			txtData = []string{""}
+		}
+		msg.Answer = append(msg.Answer, &dns.TXT{
+			Hdr: dns.RR_Header{
+				Name:   e.instanceFull,
+				Rrtype: dns.TypeTXT,
+				Class:  dns.ClassINET | 0x8000,
+				Ttl:    ttl,
+			},
+			Txt: txtData,
+		})
 	}
 	return msg
 }
@@ -797,4 +878,55 @@ func normalizeServiceType(st string) string {
 		return "_http._tcp.local."
 	}
 	return s + ".local."
+}
+
+func isURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "/")
+}
+
+func buildTXTStrings(rec Record) []string {
+	var txt []string
+	seen := make(map[string]bool)
+
+	// Add custom TXT records first if provided
+	if len(rec.TXT) > 0 {
+		var keys []string
+		for k := range rec.TXT {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			v := rec.TXT[k]
+			item := k
+			if v != "" {
+				item = fmt.Sprintf("%s=%s", k, v)
+			}
+			txt = append(txt, item)
+			seen[strings.ToLower(k)] = true
+		}
+	}
+
+	// Add model if specified and not already in TXT
+	model := rec.Model
+	if model == "" && rec.Icon != "" && !isURL(rec.Icon) {
+		model = rec.Icon
+	}
+	if model != "" && !seen["model"] {
+		txt = append(txt, fmt.Sprintf("model=%s", model))
+		seen["model"] = true
+	}
+
+	// Add icon if specified and not already in TXT
+	if rec.Icon != "" {
+		if !seen["icon"] {
+			txt = append(txt, fmt.Sprintf("icon=%s", rec.Icon))
+			seen["icon"] = true
+		}
+		if isURL(rec.Icon) && !seen["icon-url"] {
+			txt = append(txt, fmt.Sprintf("icon-url=%s", rec.Icon))
+			seen["icon-url"] = true
+		}
+	}
+
+	return txt
 }

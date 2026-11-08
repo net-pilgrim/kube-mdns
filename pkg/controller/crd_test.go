@@ -22,7 +22,7 @@ func TestCRDControllerReconcile(t *testing.T) {
 	}
 	defer mgr.Shutdown()
 
-	ctrl := NewCRDController(dynClient, mgr, 80, time.Minute)
+	ctrl := NewCRDController(dynClient, mgr, 80, "", "", time.Minute)
 
 	u := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -37,16 +37,20 @@ func TestCRDControllerReconcile(t *testing.T) {
 				"ip":          "192.168.1.50",
 				"port":        int64(8080),
 				"serviceType": "_http._tcp.local.",
+				"icon":        "RackMac",
+				"txt": map[string]interface{}{
+					"app": "testapp",
+				},
 			},
 		},
 	}
 
 	ctrl.reconcile(u)
 
-	// Verify published record in manager
+	// Verify published records in manager (primary + device-info)
 	entries := mgr.GetEntriesForHost("test.local.")
-	if len(entries) == 0 {
-		t.Errorf("Expected entry for test.local, got none")
+	if len(entries) < 2 {
+		t.Errorf("Expected at least 2 entries for test.local, got %d", len(entries))
 	}
 
 	// Now delete record
@@ -69,7 +73,7 @@ func TestCRDControllerRunGraceful(t *testing.T) {
 	}
 	defer mgr.Shutdown()
 
-	ctrl := NewCRDController(dynClient, mgr, 80, time.Minute)
+	ctrl := NewCRDController(dynClient, mgr, 80, "", "", time.Minute)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately

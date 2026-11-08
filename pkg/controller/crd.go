@@ -25,6 +25,8 @@ type CRDController struct {
 	dynamicClient dynamic.Interface
 	mdnsManager   *mdns.Manager
 	defaultPort   int
+	defaultIcon   string
+	defaultModel  string
 	informer      cache.SharedIndexInformer
 }
 
@@ -32,6 +34,8 @@ func NewCRDController(
 	dynamicClient dynamic.Interface,
 	mdnsManager *mdns.Manager,
 	defaultPort int,
+	defaultIcon string,
+	defaultModel string,
 	resyncPeriod time.Duration,
 ) *CRDController {
 	factory := dynamicinformer.NewDynamicSharedInformerFactory(dynamicClient, resyncPeriod)
@@ -41,6 +45,8 @@ func NewCRDController(
 		dynamicClient: dynamicClient,
 		mdnsManager:   mdnsManager,
 		defaultPort:   defaultPort,
+		defaultIcon:   defaultIcon,
+		defaultModel:  defaultModel,
 		informer:      informer,
 	}
 
@@ -123,11 +129,31 @@ func (c *CRDController) reconcile(u *unstructured.Unstructured) {
 
 	serviceType, _ := spec["serviceType"].(string)
 
+	icon, _ := spec["icon"].(string)
+	if icon == "" {
+		icon = c.defaultIcon
+	}
+	model, _ := spec["model"].(string)
+	if model == "" {
+		model = c.defaultModel
+	}
+
+	var txt map[string]string
+	if rawTxt, ok := spec["txt"].(map[string]interface{}); ok {
+		txt = make(map[string]string)
+		for k, v := range rawTxt {
+			txt[k] = fmt.Sprintf("%v", v)
+		}
+	}
+
 	record := mdns.Record{
 		Hostname:    host,
 		IPs:         []string{ip},
 		Port:        port,
 		ServiceType: serviceType,
+		Icon:        icon,
+		Model:       model,
+		TXT:         txt,
 	}
 
 	c.mdnsManager.Publish(key, []mdns.Record{record})

@@ -8,21 +8,26 @@ import (
 )
 
 type ManualHost struct {
-	Hostname    string `json:"hostname"`
-	IP          string `json:"ip"`
-	Port        int    `json:"port,omitempty"`
-	ServiceType string `json:"service_type,omitempty"`
+	Hostname    string            `json:"hostname"`
+	IP          string            `json:"ip"`
+	Port        int               `json:"port,omitempty"`
+	ServiceType string            `json:"service_type,omitempty"`
+	Icon        string            `json:"icon,omitempty"`
+	Model       string            `json:"model,omitempty"`
+	TXT         map[string]string `json:"txt,omitempty"`
 }
 
 type Config struct {
-	Debug       bool
-	Logging     string
-	Interface   string
-	Port        int
-	ServiceType string
-	ConfigPath  string
-	EnableCRD   bool
-	ManualHosts []ManualHost
+	Debug        bool
+	Logging      string
+	Interface    string
+	Port         int
+	ServiceType  string
+	DefaultIcon  string
+	DefaultModel string
+	ConfigPath   string
+	EnableCRD    bool
+	ManualHosts  []ManualHost
 }
 
 func ParseFlags() (*Config, error) {
@@ -33,6 +38,8 @@ func ParseFlags() (*Config, error) {
 	flag.StringVar(&cfg.Interface, "interface", "", "Network interface to bind mDNS server (e.g. eth0, eno1)")
 	flag.IntVar(&cfg.Port, "port", 0, "Default port to advertise when not specified in Ingress")
 	flag.StringVar(&cfg.ServiceType, "service-type", "_http._tcp", "Default mDNS service type")
+	flag.StringVar(&cfg.DefaultIcon, "icon", "", "Default icon or hardware model to advertise (e.g. RackMac, Macmini, Xserve)")
+	flag.StringVar(&cfg.DefaultModel, "model", "", "Default Apple Bonjour device model (e.g. RackMac, Xserve, Macmini)")
 	flag.StringVar(&cfg.ConfigPath, "config", "", "Path to manual hosts JSON config file")
 	flag.BoolVar(&cfg.EnableCRD, "enable-crd", false, "Enable CRD operator mode")
 

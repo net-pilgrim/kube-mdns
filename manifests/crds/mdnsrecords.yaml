@@ -42,6 +42,17 @@ spec:
                   type: string
                   default: "_http._tcp.local."
                   description: "mDNS / Bonjour service type"
+                icon:
+                  type: string
+                  description: "Icon name (e.g. RackMac, Macmini) or icon URL to advertise via TXT and _device-info._tcp"
+                model:
+                  type: string
+                  description: "Device/hardware model identifier for Apple Bonjour icon matching (e.g. RackMac, Xserve, Macmini)"
+                txt:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: "Arbitrary key-value pairs to publish in the DNS-SD TXT record"
                 ttl:
                   type: integer
                   default: 120
@@ -82,6 +93,9 @@ spec:
         - name: ServiceType
           type: string
           jsonPath: .spec.serviceType
+        - name: Icon
+          type: string
+          jsonPath: .spec.icon
         - name: Age
           type: date
           jsonPath: .metadata.creationTimestamp

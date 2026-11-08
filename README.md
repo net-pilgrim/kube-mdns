@@ -87,7 +87,54 @@ You can customize mDNS publishing or publish services that do not use `.local` i
 | `mdns.net-pilgrim.dev/ip` | Annotation | Explicit IP address (comma-separated if multiple) | `"192.168.1.100"` |
 | `mdns.net-pilgrim.dev/port` | Annotation | Override service port | `"8443"` |
 | `mdns.net-pilgrim.dev/service-type` | Annotation | DNS-SD service type (default: `_http._tcp.local.`) | `"_https._tcp.local."` |
+| `mdns.net-pilgrim.dev/icon` | Annotation | Icon or Apple model name (`RackMac`, `Macmini`) or icon URL | `"RackMac"` |
+| `mdns.net-pilgrim.dev/model` | Annotation | Explicit Apple Bonjour device model | `"Xserve"` |
+| `mdns.net-pilgrim.dev/txt` | Annotation | Comma-separated TXT key-value attributes | `"path=/gallery,env=prod"` |
 | `mdns.net-pilgrim.dev/publish` | Label | Bulk opt-in or opt-out | `mdns.net-pilgrim.dev/publish: "true"` |
+
+#### Service Icons & Apple Bonjour Device-Info
+
+When advertising services to modern LAN clients, you can provide an icon using the `mdns.net-pilgrim.dev/icon` annotation or CRD `spec.icon`.
+
+`kube-mdns` handles icons using two complementary mechanisms:
+1. **Apple Finder & Bonjour (`_device-info._tcp.local.`)**:
+   `kube-mdns` automatically advertises a companion `_device-info._tcp.local.` service with the `model=` TXT record. This instructs **macOS Finder**, iOS, and Bonjour network browsers to render the corresponding hardware icon next to your service instead of a generic monitor.
+   
+   Popular models recognized by macOS include:
+   - `RackMac`: Sleek Apple rackmount server icon (ideal for homelabs and Kubernetes nodes)
+   - `Xserve`: Classic Apple Xserve rack server
+   - `Macmini`: Aluminum Mac mini
+   - `MacPro`: Mac Pro workstation tower
+   - `iMac`: iMac all-in-one desktop
+   - `TimeCapsule`: Apple Time Capsule network appliance
+   - `AirPort`: Apple AirPort wireless router
+   - `AppleTV`: Apple TV media box
+
+2. **DNS-SD TXT Records (RFC 6763)**:
+   The icon and model are published directly in the service's TXT records (`model=...`, `icon=...`, `icon-url=...`). LAN dashboards, Home Assistant, Homer, Flame, and Zeroconf service browsers can read these attributes to display the application's logo or badge.
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: immich
+  namespace: immich
+  annotations:
+    mdns.net-pilgrim.dev/icon: "RackMac"
+    mdns.net-pilgrim.dev/txt: "path=/,app=immich"
+spec:
+  rules:
+    - host: immich.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: immich-server
+                port:
+                  number: 80
+```
 
 #### Example: Bare-Metal Cluster with NodePort / Custom IP
 
@@ -145,6 +192,7 @@ spec:
   ip: 192.168.1.100
   port: 8123
   serviceType: "_http._tcp.local."
+  icon: "RackMac"
   ttl: 120
 ```
 
@@ -154,9 +202,9 @@ spec:
 
 ```bash
 $ kubectl get mdns
-NAME            HOST                  IP              PORT   SERVICETYPE          AGE
-homeassistant   homeassistant.local   192.168.1.100   8123   _http._tcp.local.    42s
-samba-share     nas.local             192.168.1.100   445    _smb._tcp.local.     10s
+NAME            HOST                  IP              PORT   SERVICETYPE          ICON      AGE
+homeassistant   homeassistant.local   192.168.1.100   8123   _http._tcp.local.    RackMac   42s
+samba-share     nas.local             192.168.1.100   445    _smb._tcp.local.     TimeCapsule 10s
 ```
 
 When an `MdnsRecord` is updated or deleted, `kube-mdns` immediately broadcasts RFC 6762 Goodbye packets (TTL=0) and cleans up its cache.
@@ -173,13 +221,15 @@ You can also predefine static manual host entries via a JSON configuration file:
     "hostname": "router.local",
     "ip": "192.168.1.1",
     "port": 443,
-    "service_type": "_https._tcp.local."
+    "service_type": "_https._tcp.local.",
+    "icon": "AirPort"
   },
   {
     "hostname": "printer.local",
     "ip": "192.168.1.50",
     "port": 9100,
-    "service_type": "_printer._tcp.local."
+    "service_type": "_printer._tcp.local.",
+    "icon": "Macmini"
   }
 ]
 ```

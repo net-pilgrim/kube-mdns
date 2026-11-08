@@ -85,6 +85,8 @@ The following table lists the configurable parameters of the `kube-mdns` chart a
 | `kubeMdns.interface` | Network interface to bind (e.g. `eth0`) | `""` |
 | `kubeMdns.port` | Default fallback port when not found in Ingress | `""` |
 | `kubeMdns.serviceType` | Default mDNS service type | `"_http._tcp.local."` |
+| `kubeMdns.icon` | Default icon or model to advertise across services | `""` |
+| `kubeMdns.model` | Default Apple Bonjour hardware model (e.g. `RackMac`, `Macmini`) | `""` |
 | `kubeMdns.manualHosts` | List of manual permanent hosts to publish | `[]` |
 | `kubeMdns.existingConfigMap` | Use existing ConfigMap for manual config | `""` |
 | `kubeMdns.extraArgs` | Extra CLI arguments to pass to `kube-mdns` | `[]` |

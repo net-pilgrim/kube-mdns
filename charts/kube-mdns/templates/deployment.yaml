@@ -53,7 +53,7 @@ spec:
           {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if or .Values.kubeMdns.debug .Values.kubeMdns.logging .Values.kubeMdns.interface .Values.kubeMdns.port .Values.kubeMdns.serviceType .Values.kubeMdns.enableCrd .Values.kubeMdns.manualHosts .Values.kubeMdns.existingConfigMap .Values.kubeMdns.extraArgs }}
+          {{- if or .Values.kubeMdns.debug .Values.kubeMdns.logging .Values.kubeMdns.interface .Values.kubeMdns.port .Values.kubeMdns.serviceType .Values.kubeMdns.icon .Values.kubeMdns.model .Values.kubeMdns.enableCrd .Values.kubeMdns.manualHosts .Values.kubeMdns.existingConfigMap .Values.kubeMdns.extraArgs }}
           args:
             {{- if .Values.kubeMdns.enableCrd }}
             - --enable-crd
@@ -76,6 +76,14 @@ spec:
             {{- if .Values.kubeMdns.serviceType }}
             - --service-type
             - {{ .Values.kubeMdns.serviceType | quote }}
+            {{- end }}
+            {{- if .Values.kubeMdns.icon }}
+            - --icon
+            - {{ .Values.kubeMdns.icon | quote }}
+            {{- end }}
+            {{- if .Values.kubeMdns.model }}
+            - --model
+            - {{ .Values.kubeMdns.model | quote }}
             {{- end }}
             {{- if or .Values.kubeMdns.manualHosts .Values.kubeMdns.existingConfigMap }}
             - --config

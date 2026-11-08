@@ -199,3 +199,127 @@ func TestManagerAAAAQueryExtras(t *testing.T) {
 		t.Fatalf("expected 1 extra (A record) for AAAA query, got %d", len(extras))
 	}
 }
+
+func TestManagerIconAndDeviceInfoPublish(t *testing.T) {
+	m := &Manager{
+		defaultST:  "_http._tcp.local.",
+		byKey:      make(map[string][]*serviceEntry),
+		byHost:     make(map[string][]*serviceEntry),
+		byService:  make(map[string][]*serviceEntry),
+		byInstance: make(map[string]*serviceEntry),
+	}
+
+	rec := Record{
+		Hostname:    "photos.local",
+		IPs:         []string{"192.168.1.100"},
+		Port:        8080,
+		ServiceType: "_http._tcp",
+		Icon:        "RackMac",
+		TXT: map[string]string{
+			"path": "/gallery",
+		},
+	}
+
+	_ = m.Publish("ns/photos", []Record{rec})
+
+	// 1. Verify primary service entry has TXT records
+	m.mu.RLock()
+	primaryEntry := m.byInstance["photos._http._tcp.local."]
+	if primaryEntry == nil {
+		t.Fatalf("expected primary entry photos._http._tcp.local.")
+	}
+	// Check TXT records
+	expectedTXT := []string{"path=/gallery", "model=RackMac", "icon=RackMac"}
+	if len(primaryEntry.txt) != len(expectedTXT) {
+		t.Fatalf("expected %d txt entries, got %v", len(expectedTXT), primaryEntry.txt)
+	}
+	for i, exp := range expectedTXT {
+		if primaryEntry.txt[i] != exp {
+			t.Errorf("txt[%d] = %q; want %q", i, primaryEntry.txt[i], exp)
+		}
+	}
+
+	// 2. Verify companion device-info service entry is created
+	deviceInfoEntry := m.byInstance["photos._device-info._tcp.local."]
+	if deviceInfoEntry == nil {
+		t.Fatalf("expected companion entry photos._device-info._tcp.local.")
+	}
+	if deviceInfoEntry.port != 0 {
+		t.Errorf("device-info port = %d; want 0", deviceInfoEntry.port)
+	}
+	if len(deviceInfoEntry.txt) != 1 || deviceInfoEntry.txt[0] != "model=RackMac" {
+		t.Errorf("device-info txt = %v; want [model=RackMac]", deviceInfoEntry.txt)
+	}
+
+	// 3. Verify PTR query for _device-info._tcp.local.
+	diServices := m.byService["_device-info._tcp.local."]
+	if len(diServices) != 1 {
+		t.Fatalf("expected 1 service under _device-info._tcp.local., got %d", len(diServices))
+	}
+	if diServices[0].instanceFull != "photos._device-info._tcp.local." {
+		t.Errorf("instanceFull = %q; want photos._device-info._tcp.local.", diServices[0].instanceFull)
+	}
+	m.mu.RUnlock()
+
+	// 4. Test unpublish cleans up both primary and companion device-info service
+	m.Unpublish("ns/photos")
+	m.mu.RLock()
+	if len(m.byHost["photos.local."]) != 0 {
+		t.Errorf("expected 0 host entries after unpublish, got %d", len(m.byHost["photos.local."]))
+	}
+	if len(m.byService["_device-info._tcp.local."]) != 0 {
+		t.Errorf("expected 0 device-info entries after unpublish, got %d", len(m.byService["_device-info._tcp.local."]))
+	}
+	if m.byInstance["photos._device-info._tcp.local."] != nil {
+		t.Errorf("expected companion device-info instance removed")
+	}
+	m.mu.RUnlock()
+}
+
+func TestManagerIconURLPublish(t *testing.T) {
+	m := &Manager{
+		defaultST:  "_http._tcp.local.",
+		byKey:      make(map[string][]*serviceEntry),
+		byHost:     make(map[string][]*serviceEntry),
+		byService:  make(map[string][]*serviceEntry),
+		byInstance: make(map[string]*serviceEntry),
+	}
+
+	rec := Record{
+		Hostname:    "music.local",
+		IPs:         []string{"192.168.1.100"},
+		Port:        4533,
+		ServiceType: "_http._tcp",
+		Icon:        "https://navidrome.org/logo.png",
+		Model:       "Macmini",
+	}
+
+	_ = m.Publish("ns/music", []Record{rec})
+
+	m.mu.RLock()
+	primaryEntry := m.byInstance["music._http._tcp.local."]
+	if primaryEntry == nil {
+		t.Fatalf("expected primary entry music._http._tcp.local.")
+	}
+	// Model should be Macmini, icon should be the URL, and icon-url should also be added
+	expectedTXT := []string{"model=Macmini", "icon=https://navidrome.org/logo.png", "icon-url=https://navidrome.org/logo.png"}
+	if len(primaryEntry.txt) != len(expectedTXT) {
+		t.Fatalf("expected %d txt entries, got %v", len(expectedTXT), primaryEntry.txt)
+	}
+	for i, exp := range expectedTXT {
+		if primaryEntry.txt[i] != exp {
+			t.Errorf("txt[%d] = %q; want %q", i, primaryEntry.txt[i], exp)
+		}
+	}
+
+	// Companion device-info service should have model=Macmini
+	deviceInfoEntry := m.byInstance["music._device-info._tcp.local."]
+	if deviceInfoEntry == nil {
+		t.Fatalf("expected companion entry music._device-info._tcp.local.")
+	}
+	if len(deviceInfoEntry.txt) != 1 || deviceInfoEntry.txt[0] != "model=Macmini" {
+		t.Errorf("device-info txt = %v; want [model=Macmini]", deviceInfoEntry.txt)
+	}
+	m.mu.RUnlock()
+}
+

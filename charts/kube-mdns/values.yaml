@@ -93,6 +93,13 @@ kubeMdns:
   # Default mDNS service type (default: _http._tcp.local.)
   serviceType: "_http._tcp.local."
 
+  # Default icon to advertise across services if not specified on Ingress/CRD
+  # (e.g. RackMac, Macmini, Xserve, or an icon URL)
+  icon: ""
+
+  # Default device hardware model for Apple Bonjour icon matching (e.g. RackMac, Macmini, Xserve)
+  model: ""
+
   # Enable CRD / Operator mode (watches MdnsRecord custom resources in addition to Ingresses)
   enableCrd: false
 
@@ -104,8 +111,10 @@ kubeMdns:
   #     ip: 192.168.1.101
   #     port: 443
   #     service_type: "_https._tcp.local."
+  #     icon: "RackMac"
   #   - hostname: paperless.local
   #     ip: 192.168.1.102
+  #     icon: "Macmini"
   manualHosts: []
 
   # Name of an existing ConfigMap containing a config.json file to mount.

@@ -11,7 +11,12 @@ func TestLoadManualHosts(t *testing.T) {
 			"hostname": "homeassistant.local",
 			"ip": "192.168.1.101",
 			"port": 8123,
-			"service_type": "_http._tcp"
+			"service_type": "_http._tcp",
+			"icon": "RackMac",
+			"model": "Xserve",
+			"txt": {
+				"path": "/"
+			}
 		},
 		{
 			"hostname": "paperless.local",
@@ -39,7 +44,7 @@ func TestLoadManualHosts(t *testing.T) {
 		t.Fatalf("expected 2 hosts, got %d", len(hosts))
 	}
 
-	if hosts[0].Hostname != "homeassistant.local" || hosts[0].Port != 8123 {
+	if hosts[0].Hostname != "homeassistant.local" || hosts[0].Port != 8123 || hosts[0].Icon != "RackMac" || hosts[0].Model != "Xserve" || hosts[0].TXT["path"] != "/" {
 		t.Errorf("host 0 mismatch: %+v", hosts[0])
 	}
 	if hosts[1].Hostname != "paperless.local" || hosts[1].Port != 0 {
